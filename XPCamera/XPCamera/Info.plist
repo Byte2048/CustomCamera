@@ -45,5 +45,7 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>请允许此APP使用您的相机功能！</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>请允许此APP使用您的相册功能！</string>
 </dict>
 </plist>
