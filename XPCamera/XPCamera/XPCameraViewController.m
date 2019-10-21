@@ -23,7 +23,7 @@ API_AVAILABLE(ios(10.0))
 @property (nonatomic,strong) AVCaptureStillImageOutput *output4_10;// iOS 4~10
 @property (nonatomic,strong) AVCaptureVideoPreviewLayer *previewLayer;// 预览
 
-@property (nonatomic,strong) UIView *focalView;//对焦
+@property (nonatomic,strong) UIView *focalView;// 对焦
 @end
 
 
@@ -35,6 +35,9 @@ API_AVAILABLE(ios(10.0))
     [self setSession];
     [self setCameraLayer];
     [self setUI];
+    
+    UITapGestureRecognizer *tapGesture=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(tapScreen:)];
+    [self.view addGestureRecognizer:tapGesture];
 }
 
 - (void)viewDidAppear:(BOOL)animated{
@@ -51,15 +54,15 @@ API_AVAILABLE(ios(10.0))
 - (void)setSession{
     self.session = [[AVCaptureSession alloc] init];
     
-
-    //可以设置setting为全局变量
-//    if (@available(iOS 10.0, *)) {
-//        NSDictionary *settingDic = @{AVVideoCodecKey:AVVideoCodecJPEG};
-//        AVCapturePhotoSettings *setting = [AVCapturePhotoSettings photoSettingsWithFormat:settingDic];
-//        [self.output11 setPhotoSettingsForSceneMonitoring:setting];
-//    } else {
-//
-//    }
+    
+    // 可以设置setting为全局变量
+    //    if (@available(iOS 10.0, *)) {
+    //        NSDictionary *settingDic = @{AVVideoCodecKey:AVVideoCodecJPEG};
+    //        AVCapturePhotoSettings *setting = [AVCapturePhotoSettings photoSettingsWithFormat:settingDic];
+    //        [self.output11 setPhotoSettingsForSceneMonitoring:setting];
+    //    } else {
+    //
+    //    }
     
     
     // 获取摄像头device
@@ -79,8 +82,6 @@ API_AVAILABLE(ios(10.0))
         if ([self.session canAddOutput:self.output11]) {
             [self.session addOutput:self.output11];
         }
-        
-        //
     }else{
         self.output4_10 = [[AVCaptureStillImageOutput alloc] init];
         self.output4_10.outputSettings = @{AVVideoCodecKey:AVVideoCodecJPEG};
@@ -148,17 +149,75 @@ API_AVAILABLE(ios(10.0))
     
     AVCaptureConnection *connect;
     if (@available(iOS 11.0,*)) {
-        //TODO
         connect = [self.output11 connectionWithMediaType:AVMediaTypeVideo];
     }else{
         connect = [self.output4_10 connectionWithMediaType:AVMediaTypeVideo];
-        
     }
     
     connect.videoScaleAndCropFactor=kCameraScale;
     [self.previewLayer setAffineTransform:CGAffineTransformMakeScale(kCameraScale, kCameraScale)];
     [CATransaction commit];
+}
+
+#pragma mark - 点击屏幕时
+- (void)tapScreen:(UITapGestureRecognizer*)gesture{
+    if (self.focalView.hidden == NO) {
+        return;
+    }
+    CGPoint point = [gesture locationInView:gesture.view];
+    [self focusAtPoint:point];
+}
+
+- (void)focusAtPoint:(CGPoint)point{
+    CGSize size = self.view.bounds.size;
+    CGPoint focusPoint = CGPointMake( point.y /size.height ,1-point.x/size.width );
     
+    
+    // 判断设备是否支持对焦
+    if ([self.input.device isFocusPointOfInterestSupported] && [self.input.device isFocusModeSupported:AVCaptureFocusModeAutoFocus]) {
+        
+        NSError *error;
+        if ([self.input.device lockForConfiguration:&error]) {
+
+            // 白平衡
+            if ([self.input.device isWhiteBalanceModeSupported:AVCaptureWhiteBalanceModeAutoWhiteBalance]) {
+                [self.input.device setWhiteBalanceMode:AVCaptureWhiteBalanceModeAutoWhiteBalance];
+            }
+            
+            // 焦距模式调整
+            if ([self.input.device isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus]) {
+                [self.input.device setFocusMode:AVCaptureFocusModeAutoFocus];
+                [self.input.device setFocusPointOfInterest:focusPoint];
+            }
+            
+            // 曝光量调节
+            if([self.input.device isExposurePointOfInterestSupported] && [self.input.device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
+                [self.input.device setExposurePointOfInterest:focusPoint];
+                [self.input.device setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
+            }
+            
+            [self.input.device unlockForConfiguration];
+        }
+    }
+    
+    [self setFocusCursorWithPoint:point];
+}
+
+#pragma mark - 聚焦框动画
+- (void)setFocusCursorWithPoint:(CGPoint)point{
+    // 下面是手触碰屏幕后对焦的效果
+    self.focalView.center = point;
+    self.focalView.hidden = NO;
+    
+    [UIView animateWithDuration:0.3 animations:^{
+        self.focalView.transform = CGAffineTransformMakeScale(1.25, 1.25);
+    }completion:^(BOOL finished) {
+        [UIView animateWithDuration:0.5 animations:^{
+            self.focalView.transform = CGAffineTransformIdentity;
+        } completion:^(BOOL finished) {
+            self.focalView.hidden = YES;
+        }];
+    }];
 }
 
 #pragma mark - 手电筒
@@ -167,7 +226,7 @@ API_AVAILABLE(ios(10.0))
     AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
     if ([device hasTorch] && [device hasFlash]) {
         [device lockForConfiguration:nil];
-        //        手电筒开关--其实就是相机的闪光灯
+        // 手电筒开关--其实就是相机的闪光灯
         if (sender.selected) {
             [device setTorchMode:AVCaptureTorchModeOn];
         }else{
@@ -219,7 +278,7 @@ API_AVAILABLE(ios(10.0))
             NSLog(@"拍照失败");
             return ;
         }
-//    获取当前屏幕输出 ，实现代理
+        // 获取当前屏幕输出 ，实现代理
         [self.output11 capturePhotoWithSettings:setting delegate:self];
     }else{
         AVCaptureConnection *connect = [self.output4_10 connectionWithMediaType:AVMediaTypeVideo];
@@ -300,5 +359,16 @@ API_AVAILABLE(ios(10.0))
 //隐藏状态栏
 - (BOOL)prefersStatusBarHidden {
     return YES;
+}
+
+- (UIView *)focalView{
+    if (!_focalView) {
+        _focalView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 80, 80)];
+        _focalView.layer.borderWidth = 1.0f;
+        _focalView.layer.borderColor = [UIColor redColor].CGColor;
+        _focalView.hidden = YES;
+        [self.view addSubview:_focalView];
+    }
+    return _focalView;
 }
 @end
